@@ -349,16 +349,19 @@ function newClient() {
 	echo ""
 	echo "The client name must consist of alphanumeric character(s). It may also include underscores or dashes and can't exceed 15 chars."
 
-	until [[ ${CLIENT_NAME} =~ ^[a-zA-Z0-9_-]+$ && ${CLIENT_EXISTS} == '0' && ${#CLIENT_NAME} -lt 16 ]]; do
-		read -rp "Client name: " -e CLIENT_NAME
-		CLIENT_EXISTS=$(grep -c -E "^### Client ${CLIENT_NAME}\$" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+	if [[ -n "$CLIENT_NAME" ]]; then
+  	CLIENT_EXISTS=$(grep -c -E "^### Client ${CLIENT_NAME}\$" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+  	if [[ ${CLIENT_EXISTS} != 0 ]]; then
+  		echo "Client already exists"
+  		exit 1
+  	fi
+  else
+  	until [[ ${CLIENT_NAME} =~ ^[a-zA-Z0-9_-]+$ && ${CLIENT_EXISTS} == '0' && ${#CLIENT_NAME} -lt 16 ]]; do
+  		read -rp "Client name: " -e CLIENT_NAME
+  		CLIENT_EXISTS=$(grep -c -E "^### Client ${CLIENT_NAME}\$" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+  	done
+  fi
 
-		if [[ ${CLIENT_EXISTS} != 0 ]]; then
-			echo ""
-			echo -e "${ORANGE}A client with the specified name was already created, please choose another name.${NC}"
-			echo ""
-		fi
-	done
 
 	for DOT_IP in {2..254}; do
 		DOT_EXISTS=$(grep -c "${SERVER_WG_IPV4::-1}${DOT_IP}" "/etc/wireguard/${SERVER_WG_NIC}.conf")
@@ -453,38 +456,32 @@ function listClients() {
 	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | nl -s ') '
 }
 
-function revokeClient() {
-	NUMBER_OF_CLIENTS=$(grep -c -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf")
-	if [[ ${NUMBER_OF_CLIENTS} == '0' ]]; then
-		echo ""
-		echo "You have no existing clients!"
+function revokeClientByName() {
+	local CLIENT_NAME="$1"
+
+	if [[ -z "$CLIENT_NAME" ]]; then
+		echo "Client name is required"
 		exit 1
 	fi
 
-	echo ""
-	echo "Select the existing client you want to revoke"
-	grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | nl -s ') '
-	until [[ ${CLIENT_NUMBER} -ge 1 && ${CLIENT_NUMBER} -le ${NUMBER_OF_CLIENTS} ]]; do
-		if [[ ${CLIENT_NUMBER} == '1' ]]; then
-			read -rp "Select one client [1]: " CLIENT_NUMBER
-		else
-			read -rp "Select one client [1-${NUMBER_OF_CLIENTS}]: " CLIENT_NUMBER
-		fi
-	done
+	if ! grep -q -E "^### Client ${CLIENT_NAME}$" "/etc/wireguard/${SERVER_WG_NIC}.conf"; then
+		echo "Client not found: ${CLIENT_NAME}"
+		exit 1
+	fi
 
-	# match the selected number to a client name
-	CLIENT_NAME=$(grep -E "^### Client" "/etc/wireguard/${SERVER_WG_NIC}.conf" | cut -d ' ' -f 3 | sed -n "${CLIENT_NUMBER}"p)
-
-	# remove [Peer] block matching $CLIENT_NAME
+	# remove [Peer] block
 	sed -i "/^### Client ${CLIENT_NAME}\$/,/^$/d" "/etc/wireguard/${SERVER_WG_NIC}.conf"
 
 	# remove generated client file
 	HOME_DIR=$(getHomeDirForClient "${CLIENT_NAME}")
 	rm -f "${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
 
-	# restart wireguard to apply changes
+	# apply changes
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
+
+	echo "Client revoked: ${CLIENT_NAME}"
 }
+
 
 function uninstallWg() {
 	echo ""
@@ -555,6 +552,35 @@ function uninstallWg() {
 	fi
 }
 
+ACTION=""
+CLIENT_NAME=""
+CLIENT_DNS_1=""
+CLIENT_DNS_2=""
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		-create)
+			ACTION="create"
+			shift
+			;;
+		-delete)
+			ACTION="delete"
+			shift
+			;;
+		-name)
+			CLIENT_NAME="$2"
+			shift 2
+			;;
+		-dns)
+			CLIENT_DNS_1="$2"
+			CLIENT_DNS_2="$2"
+			shift 2
+			;;
+		*)
+			echo "Unknown option: $1"
+			exit 1
+			;;
+	esac
+done
 function manageMenu() {
 	echo "Welcome to WireGuard-install!"
 	echo "The git repository is available at: https://github.com/angristan/wireguard-install"
@@ -595,7 +621,27 @@ initialCheck
 # Check if WireGuard is already installed and load params
 if [[ -e /etc/wireguard/params ]]; then
 	source /etc/wireguard/params
-	manageMenu
+	if [[ -n "$ACTION" ]]; then
+  	case "$ACTION" in
+  		create)
+  			if [[ -z "$CLIENT_NAME" ]]; then
+  				echo "Missing -name"
+  				exit 1
+  			fi
+  			newClient
+  			;;
+  		delete)
+  			if [[ -z "$CLIENT_NAME" ]]; then
+  				echo "Missing -name"
+  				exit 1
+  			fi
+  			revokeClientByName "$CLIENT_NAME"
+  			;;
+  	esac
+  else
+  	manageMenu
+  fi
+
 else
 	installWireGuard
 fi
