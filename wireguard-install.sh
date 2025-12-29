@@ -386,17 +386,14 @@ function newClient() {
   fi
 
 	BASE_IP=$(echo "$SERVER_WG_IPV6" | awk -F '::' '{ print $1 }')
-	until [[ ${IPV6_EXISTS} == '0' ]]; do
-		read -rp "Client WireGuard IPv6: ${BASE_IP}::" -e -i "${DOT_IP}" DOT_IP
-		CLIENT_WG_IPV6="${BASE_IP}::${DOT_IP}"
-		IPV6_EXISTS=$(grep -c "${CLIENT_WG_IPV6}/128" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+  CLIENT_WG_IPV6="${BASE_IP}::${DOT_IP}"
 
-		if [[ ${IPV6_EXISTS} != 0 ]]; then
-			echo ""
-			echo -e "${ORANGE}A client with the specified IPv6 was already created, please choose another IPv6.${NC}"
-			echo ""
-		fi
-	done
+  IPV6_EXISTS=$(grep -c "${CLIENT_WG_IPV6}/128" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+  if [[ ${IPV6_EXISTS} != 0 ]]; then
+  	echo "IPv6 already exists: ${CLIENT_WG_IPV6}"
+  	exit 1
+  fi
+
 
 	# Generate key pair for the client
 	CLIENT_PRIV_KEY=$(wg genkey)
