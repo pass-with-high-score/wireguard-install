@@ -192,14 +192,14 @@ function installWireGuard() {
 	# Install WireGuard tools and module
 	if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' && ${VERSION_ID} -gt 10 ]]; then
 		apt-get update
-		installPackages apt-get install -y wireguard iptables resolvconf qrencode
+		installPackages apt-get install -y wireguard iptables resolvconf
 	elif [[ ${OS} == 'debian' ]]; then
 		if ! grep -rqs "^deb .* buster-backports" /etc/apt/; then
 			echo "deb http://deb.debian.org/debian buster-backports main" >/etc/apt/sources.list.d/backports.list
 			apt-get update
 		fi
 		apt-get update
-		installPackages apt-get install -y iptables resolvconf qrencode
+		installPackages apt-get install -y iptables resolvconf
 		installPackages apt-get install -y -t buster-backports wireguard
 	elif [[ ${OS} == 'fedora' ]]; then
 		if [[ ${VERSION_ID} -lt 32 ]]; then
@@ -207,12 +207,11 @@ function installWireGuard() {
 			dnf copr enable -y jdoss/wireguard
 			installPackages dnf install -y wireguard-dkms
 		fi
-		installPackages dnf install -y wireguard-tools iptables qrencode
+		installPackages dnf install -y wireguard-tools iptables
 	elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
 		if [[ ${VERSION_ID} == 8* ]]; then
 			installPackages yum install -y epel-release elrepo-release
 			installPackages yum install -y kmod-wireguard
-			yum install -y qrencode || true # not available on release 9
 		fi
 		installPackages yum install -y wireguard-tools iptables
 	elif [[ ${OS} == 'oracle' ]]; then
@@ -220,12 +219,12 @@ function installWireGuard() {
 		dnf config-manager --disable -y ol8_developer
 		dnf config-manager --enable -y ol8_developer_UEKR6
 		dnf config-manager --save -y --setopt=ol8_developer_UEKR6.includepkgs='wireguard-tools*'
-		installPackages dnf install -y wireguard-tools qrencode iptables
+		installPackages dnf install -y wireguard-tools iptables
 	elif [[ ${OS} == 'arch' ]]; then
-		installPackages pacman -S --needed --noconfirm wireguard-tools qrencode
+		installPackages pacman -S --needed --noconfirm wireguard-tools
 	elif [[ ${OS} == 'alpine' ]]; then
 		apk update
-		installPackages apk add wireguard-tools iptables libqrencode-tools
+		installPackages apk add wireguard-tools iptables
 	fi
 
 	# Verify WireGuard installation
@@ -343,12 +342,6 @@ function newClient() {
 		fi
 	fi
 	ENDPOINT="${SERVER_PUB_IP}:${SERVER_PORT}"
-
-	echo ""
-	echo "Client configuration"
-	echo ""
-	echo "The client name must consist of alphanumeric character(s). It may also include underscores or dashes and can't exceed 15 chars."
-
 	if [[ -n "$CLIENT_NAME" ]]; then
   	CLIENT_EXISTS=$(grep -c -E "^### Client ${CLIENT_NAME}\$" "/etc/wireguard/${SERVER_WG_NIC}.conf")
   	if [[ ${CLIENT_EXISTS} != 0 ]]; then
@@ -428,14 +421,7 @@ AllowedIPs = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128" >>"/etc/wireguard/${SER
 
 	wg syncconf "${SERVER_WG_NIC}" <(wg-quick strip "${SERVER_WG_NIC}")
 
-	# Generate QR code if qrencode is installed
-	if command -v qrencode &>/dev/null; then
-		echo -e "${GREEN}\nHere is your client config file as a QR Code:\n${NC}"
-		qrencode -t ansiutf8 -l L <"${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
-		echo ""
-	fi
-
-	echo -e "${GREEN}Your client config file is in ${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf${NC}"
+	cat "${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
 }
 
 function listClients() {
@@ -496,9 +482,9 @@ function uninstallWg() {
 		fi
 
 		if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
-			apt-get remove -y wireguard wireguard-tools qrencode
+			apt-get remove -y wireguard wireguard-tools
 		elif [[ ${OS} == 'fedora' ]]; then
-			dnf remove -y --noautoremove wireguard-tools qrencode
+			dnf remove -y --noautoremove wireguard-tools
 			if [[ ${VERSION_ID} -lt 32 ]]; then
 				dnf remove -y --noautoremove wireguard-dkms
 				dnf copr disable -y jdoss/wireguard
@@ -506,16 +492,14 @@ function uninstallWg() {
 		elif [[ ${OS} == 'centos' ]] || [[ ${OS} == 'almalinux' ]] || [[ ${OS} == 'rocky' ]]; then
 			yum remove -y --noautoremove wireguard-tools
 			if [[ ${VERSION_ID} == 8* ]]; then
-				yum remove --noautoremove kmod-wireguard qrencode
+				yum remove --noautoremove kmod-wireguard
 			fi
 		elif [[ ${OS} == 'oracle' ]]; then
-			yum remove --noautoremove wireguard-tools qrencode
+			yum remove --noautoremove wireguard-tools
 		elif [[ ${OS} == 'arch' ]]; then
-			pacman -Rs --noconfirm wireguard-tools qrencode
+			pacman -Rs --noconfirm wireguard-tools
 		elif [[ ${OS} == 'alpine' ]]; then
-			(cd qrencode-4.1.1 || exit && make uninstall)
-			rm -rf qrencode-* || exit
-			apk del wireguard-tools libqrencode libqrencode-tools
+			apk del wireguard-tools
 		fi
 
 		rm -rf /etc/wireguard
